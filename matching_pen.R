@@ -4,6 +4,7 @@
 set.seed(1999)
 library(tidyverse)
 library(cmdstanr)
+library(ggplot2)
 
 # Opponent: chooses 1 with probability p_one (biased random agent)
 # this opponent has no learning, strategy - it just tends to choose 1 more often (0.6)
@@ -559,3 +560,4 @@ ggplot(results_trials, aes(trials, est_alpha)) +
   geom_point() +
   stat_summary(fun = mean, geom = "point", size = 4) +
   theme_classic()
+
