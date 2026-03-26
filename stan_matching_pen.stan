@@ -65,10 +65,12 @@ transformed parameters {
 
 model {
   alpha ~ beta(2, 2);
+  //alpha ~ beta(3, 3);
   // Prior for learning rate:
   // keeps alpha between 0 and 1 and mildly favors middle values over extremes
 
   beta ~ lognormal(0, 0.5);
+  //beta ~ lognormal(0, 0.3);
   // Prior for sensitivity:
   // ensures beta is positive and favors moderate values
 

@@ -1,5 +1,4 @@
 # --- MATCHING PENNIES --- 
-
 # Setup
 set.seed(1999)
 library(tidyverse)
@@ -29,7 +28,7 @@ simulate_memory_agent <- function(opponent, alpha, beta, bias, m0) {
   Self          <- integer(T)
   Feedback      <- integer(T)
   
-  m_now <- m0 #initalize current memory state
+  m_now <- m0 #initialize current memory state
   
   # loop through trails 1 to T
   for (t in 1:T) {
@@ -119,7 +118,9 @@ prior_sim <- NULL
 for(i in 1:20){ #repeat 20, simulate "fake" df from the priors
   
   alpha <- rbeta(1,2,2)
+  #alpha <- rbeta(1, 3, 3) #try to make alpha tighter
   beta  <- rlnorm(1,0,0.5)
+  #beta  <- rlnorm(1, 0, 0.3) #try to make beta tighter
   bias  <- rnorm(1,0,1)
   m0    <- rbeta(1,2,2)
   
@@ -180,13 +181,12 @@ ggplot(posterior_sim, aes(trial, cumulative, group = draw)) +
     data = df_agent %>% mutate(cumulative = cumsum(Feedback)/trial),
     aes(trial, cumulative),
     inherit.aes = FALSE,   
-    linewidth = 1.2
-  ) +
-  theme_classic()
+    linewidth = 1.2) + theme_classic()
 
 
 # --- PRIOR VS POSTERIOR ---
 
+#ALPHA
 prior_alpha <- rbeta(1000,2,2) #1000 draws from the prior of alpha
 post_alpha  <- posterior$alpha # use posterior draws of alpha from the fitted model 
 
@@ -202,6 +202,61 @@ ggplot(df_plot, aes(value, fill = type)) +
   labs(title = "Alpha: Prior vs Posterior")
 
 
+
+#BETA
+
+prior_beta <- rlnorm(1000, 0, 0.5)
+post_beta  <- posterior$beta # use posterior draws of alpha from the fitted model 
+
+df_plot <- rbind(
+  data.frame(value = prior_beta, type = "Prior"),
+  data.frame(value = post_beta, type = "Posterior")
+)
+
+#shows whether the data updated our beliefs about alpha
+ggplot(df_plot, aes(value, fill = type)) +
+  geom_density(alpha = 0.4) +
+  theme_classic() +
+  labs(title = "Beta: Prior vs Posterior")
+
+
+#Bias
+
+prior_bias <- rnorm(1000, 0, 1)
+post_bias  <- posterior$bias # use posterior draws of alpha from the fitted model 
+
+df_plot <- rbind(
+  data.frame(value = prior_bias, type = "Prior"),
+  data.frame(value = post_bias, type = "Posterior")
+)
+
+#shows whether the data updated our beliefs about alpha
+ggplot(df_plot, aes(value, fill = type)) +
+  geom_density(alpha = 0.4) +
+  theme_classic() +
+  labs(title = "Bias: Prior vs Posterior")
+
+
+
+#m0
+
+prior_m0 <- rbeta(1000,2,2) #1000 draws from the prior of alpha
+post_m0  <- posterior$m0 # use posterior draws of alpha from the fitted model 
+
+df_plot <- rbind(
+  data.frame(value = prior_m0, type = "Prior"),
+  data.frame(value = post_m0, type = "Posterior")
+)
+
+#shows whether the data updated our beliefs about alpha
+ggplot(df_plot, aes(value, fill = type)) +
+  geom_density(alpha = 0.4) +
+  theme_classic() +
+  labs(title = "m0: Prior vs Posterior")
+
+
+
+
 # --- PARAMETER RECOVERY: ALPHA ---
 # 1) Choose true parameter value
 # 2) Simulate data from it
@@ -215,7 +270,7 @@ beta_fixed <- 2
 bias_fixed <- 0
 m0_fixed   <- 0.5
 
-n_reps <- 5 # do 5 replications 
+n_reps <- 20 # do 20 replications 
 
 results <- NULL
 
@@ -293,7 +348,7 @@ alpha_fixed <- 0.2
 bias_fixed  <- 0
 m0_fixed    <- 0.5
 
-n_reps <- 5
+n_reps <- 20
 
 results_beta <- NULL
 
@@ -360,7 +415,7 @@ alpha_fixed <- 0.2
 beta_fixed  <- 2
 m0_fixed    <- 0.5
 
-n_reps <- 5
+n_reps <- 20
 
 results_bias <- NULL
 
@@ -427,7 +482,7 @@ alpha_fixed <- 0.2
 beta_fixed  <- 2
 bias_fixed  <- 0
 
-n_reps <- 5
+n_reps <- 20
 
 results_m0 <- NULL
 
@@ -513,51 +568,106 @@ results_m0 %>%
 
 
 
-# --- recovery across trial numbers --- 
-trial_values <- c(20, 50, 100, 200)
+# recovery across trial numbers, all params
 
-results_trials <- NULL
+trial_values <- c(20, 50, 100, 150, 200)
+n_reps <- 20
 
-#loop through trials
+# fixed true values used to generate the data
+true_alpha <- 0.2
+true_beta  <- 2
+true_bias  <- 0
+true_m0    <- 0.5
+
+results_trials_all <- NULL
+
 for(n in trial_values){
   
-  for(rep in 1:5){
-    # simulate opponent with n trials
+  for(rep in 1:n_reps){
+    
+    # simulate opponent
     opponent <- simulate_opponent(n, 0.6)
     
-    #generate data with fixed true parameters 
+    # simulate agent with fixed true parameters
     df <- simulate_memory_agent(
       opponent,
-      alpha = 0.2,
-      beta  = 2,
-      bias  = 0,
-      m0    = 0.5
+      alpha = true_alpha,
+      beta  = true_beta,
+      bias  = true_bias,
+      m0    = true_m0
     )
     
-    #prepare Stan
+    # prepare data for Stan
     stan_data <- list(
       T = nrow(df),
       Self = as.integer(df$Self),
       Other = as.integer(df$Other)
     )
     
-    # fit (default chain/iterations)
-    fit_rec <- model$sample(data = stan_data, refresh = 0)
+    # fit model
+    fit_rec <- model$sample(
+      data = stan_data,
+      chains = 4,
+      parallel_chains = 4,
+      iter_warmup = 1000,
+      iter_sampling = 1000,
+      seed = 5000 + n + rep,
+      refresh = 0
+    )
     
-    #only track alpha recov
-    sum <- fit_rec$summary("alpha")
+    # extract posterior means for all parameters
+    sum_pars <- fit_rec$summary(c("alpha", "beta", "bias", "m0"))
     
-    #save number of trials and estimated alpha 
-    results_trials <- rbind(results_trials, data.frame(
-      trials = n,
-      est_alpha = sum$mean
-    ))
+    # save one row per parameter
+    results_trials_all <- rbind(
+      results_trials_all,
+      data.frame(
+        trials = n,
+        rep = rep,
+        parameter = "alpha",
+        true_value = true_alpha,
+        est_value = sum_pars$mean[sum_pars$variable == "alpha"]
+      ),
+      data.frame(
+        trials = n,
+        rep = rep,
+        parameter = "beta",
+        true_value = true_beta,
+        est_value = sum_pars$mean[sum_pars$variable == "beta"]
+      ),
+      data.frame(
+        trials = n,
+        rep = rep,
+        parameter = "bias",
+        true_value = true_bias,
+        est_value = sum_pars$mean[sum_pars$variable == "bias"]
+      ),
+      data.frame(
+        trials = n,
+        rep = rep,
+        parameter = "m0",
+        true_value = true_m0,
+        est_value = sum_pars$mean[sum_pars$variable == "m0"]
+      )
+    )
   }
 }
 
-#see whether alpha recovery changes over trials
-ggplot(results_trials, aes(trials, est_alpha)) +
-  geom_point() +
-  stat_summary(fun = mean, geom = "point", size = 4) +
-  theme_classic()
+#plot
+ggplot(results_trials_all, aes(x = trials, y = est_value)) +
+  geom_point(alpha = 0.5, position = position_jitter(width = 3, height = 0)) +
+  stat_summary(fun = mean, geom = "point", size = 3) +
+  geom_hline(aes(yintercept = true_value), linetype = "dashed", color = "red") +
+  facet_wrap(~ parameter, scales = "free_y") +
+  theme_classic() +
+  labs(
+    title = "Recovery across trial numbers",
+    x = "Number of trials",
+    y = "Estimated value"
+  )
 
+
+
+# MCMC diagnostics 
+fit$summary(c("alpha", "beta", "bias", "m0"))
+fit$diagnostic_summary()
